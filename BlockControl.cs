@@ -40,6 +40,21 @@ public class Block
         NUM,//방향 종류  =4
     };
 
+    public enum STEP
+    {//블록의 상태 표시
+        NONE = -1,//상태정보 없음
+        IDLE = 0,//대기중
+        GRABBED,//잡혀있음
+        RELEASED,//떨어진 순간
+        SLIDE,//슬라이드 중
+        VACANT,//소멸 중
+        RESPAWN,//재생성 중
+        FALL,//낙하 중
+        LONG_SLIDE,//크게 슬라이드 중
+        NUM,//상태가 몇종류인지 표시
+    };
+
+
     public static int BLOCK_NUM_X = 9;//블록을 배치할 수 있는 X방향 최대 수
     public static int BLOCK_NUM_Y = 9;//블록을 배치할 수 있는 Y방향 최대 수
 }
@@ -50,17 +65,102 @@ public class BlockControl : MonoBehaviour
     public BlockRoot block_root = null;//블록루트 클래스의 변수.블록을 만들어내거나 교체
     public Block.iPosition i_pos;//블록 좌표
 
+    public Block.STEP step = Block.STEP.NONE;//지금 상태
+    public Block.STEP next_step = Block.STEP.NONE;//다음 상태
+    private Vector3 position_offset_initial = Vector3.zero;// 교체 전 위치
+    public Vector3 position_offset = Vector3.zero;//교체 후 위치
     
     void Start()
     {
         this.setColor(this.color);//색칠
+        this.next_step = Block.STEP.IDLE;//다음 블록을 대기중으로
     }
 
     
     void Update()
     {
-        
+        Vector3 mouse_position;//마우스 위치
+        this.block_root.unprojectMousePosition(out mouse_position, Input.mousePosition);//마우스 위치 획득. unprojectMousePosition = BlockRoot클래스의 메서드에서, 마우스가 지금 어느 블록의 표면을 가리키는지 계산
+
+        //획득한 마우스 위치를 x와 y만으로 한다.
+        Vector2 mouse_position_xy = new Vector2(mouse_position.x, mouse_position.y);
+
+        //다음 블록 상태가 "정보 없음" 이외인 동안 = 즉 , 다음 블록 상태가 변경된 경우
+        while (this.next_step != Block.STEP.NONE)
+        {
+            this.step = this.next_step;
+            this.next_step = Block.STEP.NONE;
+
+            switch(this.step)
+            {
+                case Block.STEP.IDLE://대기 상태
+                    this.position_offset = Vector3.zero;//블록 표시 크기를 보통 크기로
+                    this.transform.localScale = Vector3.one * 1.0f;
+                    break;
+                case Block.STEP.GRABBED://잡힌 상태
+                    this.transform.localScale = Vector3.one * 1.2f;//블록 표시 크기를 크게
+                    break;
+                case Block.STEP.RELEASED://떨어져 있는 상태
+                    this.position_offset = Vector3.zero;
+                    this.transform.localScale = Vector3.one * 1.0f;//블록 표시 크기를 보통 사이즈로
+                    break;
+            }
+        }
+        //그리드 좌표를 실제 좌표(씬의 좌표)로 변환하고 position_offset 추가
+        Vector3 position = BlockRoot.calcBlockPosition(this.i_pos) + this.position_offset;
+
+        //실제 위치를 새로운 위치로 변경
+        this.transform.position = position;
+
     }
+    public void beginGrab()
+    {
+        this.next_step = Block.STEP.GRABBED;
+    }
+
+    public void endGrab()
+    {
+        this.next_step = Block.STEP.IDLE;
+    }
+    public bool isGrabbable()
+    {
+        bool is_grabbable = false;
+        switch (this.step) 
+        {
+            case Block.STEP.IDLE:is_grabbable = true;break;//대기 상태일 때에만 true(잡을 수 있다)를 반환
+        }
+        return(is_grabbable);
+    }
+
+    public bool isContainedPosition(Vector2 position)
+    {
+        bool ret = false;
+        Vector3 center = this.transform.position;
+        float h = Block.COLLISION_SIZE / 2.0f;
+        /*do
+        {
+            //x좌표가 자신과 겹치지 않으면 break로 루프 탈출
+            if (position.x < center.x - h || center.x + h < position.x)
+            {
+                break;
+            }
+            //y좌표가 자신과 겹치지 않으면 break로 루프 탈출
+            if (position.y < center.y - h || center.y + h < position.y)
+            {
+                break;
+            }
+            //x좌표, y좌표 모두 겹쳐있으면 true(겹쳐 있다)를 반환
+            ret = true;
+        } while (false);*/
+        if (position.x >= center.x - h && position.x <= center.x + h && position.y >= center.y - h && position.y <= center.y + h)
+        {//블록의 중심과 마우스 좌표 간의 거리를 계산하여 해당 거리가 블록의 크기 반만큼 이내인 경우에만 클릭 가능한 영역으로 판단.
+         //-->블록의 중심에서 얼마나 떨어져 있는지에 관계 없이 정확한 영역을 판단가능
+            ret = true;
+        }
+        return (ret);
+    }
+
+
 
     public void setColor(Block.COLOR color)
     {//인수 color의 색으로 블록을 칠한다.
