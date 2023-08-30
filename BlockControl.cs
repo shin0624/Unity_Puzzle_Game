@@ -8,6 +8,8 @@ public class Block
     public static float COLLISION_SIZE = 1.0f;//블록의 충돌 크기
     public static float VANISH_TIME = 3.0f;//불이 붙고 사라질 때까지의 시간
 
+   
+
     public struct iPosition 
     {//그리드에서의 좌표를 나타내는 구조체
         public int x;
@@ -69,7 +71,67 @@ public class BlockControl : MonoBehaviour
     public Block.STEP next_step = Block.STEP.NONE;//다음 상태
     private Vector3 position_offset_initial = Vector3.zero;// 교체 전 위치
     public Vector3 position_offset = Vector3.zero;//교체 후 위치
-    
+
+    public float vanish_timer = -1.0f;//블록이 사라질 때 까지의 시간
+    public Block.DIR4 slide_dir = Block.DIR4.NONE;//슬라이드 된 방향.
+    public float step_timer = 0.0f;//블록이 교체된 때의 이동시간 
+
+    public Block.DIR4 calcSlideDir(Vector2 mouse_position)//인수 마우스 위치를 바탕으로 어느쪽으로 슬라이드되었는지 판단 후 Block.DIR4형 값으로 반환-->블록 교체 여부를 판단.
+    {
+        Block.DIR4 dir = Block.DIR4.NONE;
+        Vector2 v = mouse_position - new Vector2(this.transform.position.x, this.transform.position.y);//지정된 마우스 위치와 현재 위치의 차
+
+        if (v.magnitude > 0.1f)//magnitude = 벡터 원점과 끝점 사이. 즉 벡터의 크기
+        {
+            //벡터 크기 0.1 이하이면 슬라이드하지 않은 것으로 정의
+            if (v.y > v.x)//v가 0.1 이상이면 방향을 구하고 DIR4형 값 반환
+            {
+                if (v.y > -v.x)
+                {
+                    dir = Block.DIR4.UP;
+                }
+                else
+                {
+                    dir = Block.DIR4.LEFT;
+                }
+            }
+            else
+            {
+                if (v.y > -v.x)
+                {
+                    dir = Block.DIR4.RIGHT;
+                }
+                else
+                {
+                    dir = Block.DIR4.DOWN;
+                }
+            }
+        }
+        return (dir);
+    }
+
+    public float calcDirOffset(Vector2 position, Block.DIR4 dir)
+    {
+        //인수(위치, 방향)을 근거로, 현재 위치와 슬라이드 할 곳의 거리가 어느정도인지 반환
+        float offset = 0.0f;
+        Vector2 v = position - new Vector2(this.transform.position.x, this.transform.position.y);//지정된 위치와 블록의 현재 위치의 차
+        switch (dir)
+        {
+            case Block.DIR4.RIGHT: offset = v.x; break;
+            case Block.DIR4.LEFT: offset = -v.x; break;
+            case Block.DIR4.UP: offset = v.y; break;
+            case Block.DIR4.DOWN: offset = -v.y; break;
+        }
+        return (offset);
+    }
+
+    public void beginSlide(Vector3 offset)
+    {
+        this.position_offset_initial = offset;
+        this.position_offset = this.position_offset_initial;
+        this.next_step = Block.STEP.SLIDE;//상태를 SLIDE로 변경
+    }
+
     void Start()
     {
         this.setColor(this.color);//색칠
@@ -84,6 +146,30 @@ public class BlockControl : MonoBehaviour
 
         //획득한 마우스 위치를 x와 y만으로 한다.
         Vector2 mouse_position_xy = new Vector2(mouse_position.x, mouse_position.y);
+
+        this.step_timer += Time.deltaTime;
+        float slide_time = 0.2f;
+
+        if(this.next_step== Block.STEP.NONE)//상태정보 없음의 경우
+        {
+            switch (this.step) 
+            {
+                case Block.STEP.SLIDE: if (this.step_timer >= slide_time)
+                    {
+                        if (this.vanish_timer == 0.0f)
+                        {
+                            this.next_step = Block.STEP.VACANT;//슬라이드 중인 블록 소멸 시 VACANT(사라진)상태로 이행
+                        }
+                        else
+                        {
+                            this.next_step = Block.STEP.IDLE;
+                        }
+                    }
+                    break;
+            }
+
+        }
+
 
         //다음 블록 상태가 "정보 없음" 이외인 동안 = 즉 , 다음 블록 상태가 변경된 경우
         while (this.next_step != Block.STEP.NONE)
@@ -104,8 +190,24 @@ public class BlockControl : MonoBehaviour
                     this.position_offset = Vector3.zero;
                     this.transform.localScale = Vector3.one * 1.0f;//블록 표시 크기를 보통 사이즈로
                     break;
+                case Block.STEP.VACANT://사라진 상태
+                    this.position_offset= Vector3.zero;
+                    break;
             }
+            this.step_timer = 0.0f;
         }
+        switch (this.step)
+        {
+            case Block.STEP.GRABBED://잡힌 상태일 때. 항상 슬라이드 방향을 체크하도록
+                this.slide_dir = this.calcSlideDir(mouse_position_xy); break;
+            case Block.STEP.SLIDE://슬라이드 중일 때.
+                float rate = this.step_timer / slide_time;//블록을 서서히 이동하는 거리.
+                rate = Mathf.Min(rate, 1.0f);
+                rate = Mathf.Sin(rate * Mathf.PI / 2.0f);
+                this.position_offset = Vector3.Lerp(this.position_offset_initial, Vector3.zero, rate);break;
+                //Vector3.Lerp = 시작벡터 ~ 목표벡터 사이의 시간에 따른 위치를 구할 때 사용.Lerp(start, finish, 0.0~1.0값)
+        }
+
         //그리드 좌표를 실제 좌표(씬의 좌표)로 변환하고 position_offset 추가
         Vector3 position = BlockRoot.calcBlockPosition(this.i_pos) + this.position_offset;
 
