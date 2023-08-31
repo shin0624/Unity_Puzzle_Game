@@ -48,6 +48,32 @@ public class BlockRoot : MonoBehaviour
         }
         else
         {
+            do//블록 교체 코드 추가.-->블록을 잡고 상하좌우 중 한 쪽으로 블록 크기의 반 이상 마우스 이동 시 블록이 교체되도록.
+            {
+                //슬라이드할 곳의 블록을 가져옴
+                BlockControl swap_target = this.getNextBlock(grabbed_block, grabbed_block.slide_dir);
+
+                if (swap_target == null)//슬라이드 할 곳 블록이 비어있을 경우
+                {
+                    break;//루프 탈출
+                }
+
+                if (!swap_target.isGrabbable())//슬라이드 할 곳의 블록이 잡을 수 있는 상태가 아닐 경우
+                {
+                    break;//루프 탈출
+                }
+
+                float offset = this.grabbed_block.calcDirOffset(mouse_position_xy, this.grabbed_block.slide_dir);//현재 위치 ~ 슬라이드 위치 까지의 거리
+
+                if (offset < Block.COLLISION_SIZE / 2.0f)//수리 거리가 블록 크기의 절반 이하일 때
+                {
+                    break;//루프 탈출
+                }
+                this.swapBlock(grabbed_block, grabbed_block.slide_dir, swap_target);//블록 교체
+
+                this.grabbed_block = null;//지금은 블록을 잡고 있지 않음.
+            } while (false);
+
             //블록을 잡았을 때
             if(!Input.GetMouseButton(0))
             {
@@ -128,4 +154,106 @@ public class BlockRoot : MonoBehaviour
 
         return (position);//씬에서의 좌표를 반환
     }
+
+    public BlockControl getNextBlock(BlockControl block, Block.DIR4 dir)//BlockControl 스크립트 매개변수 block = 현재 잡고 있는 블록. / Block 클래스의 DIR4 열거체 변수 dir = 슬라이드 방향
+        //슬라이드 할 곳에 어떤 블록이 있는지 반환. 슬라이드할 곳의 블록을 blocks 배열 내에서 선택하여 그 블록을 반환. 만약 슬라이드할 곳이 9*9 그리드 바깥일 경우 블록 존재 x(null)
+    {
+        BlockControl next_block = null;//슬라이드할 곳의 블록을 여기에 저장
+
+        switch (dir)
+        {
+            case Block.DIR4.RIGHT:
+                if(block.i_pos.x < Block.BLOCK_NUM_X - 1)//그리드 내
+                {
+                    next_block = this.blocks[block.i_pos.x + 1, block.i_pos.y];
+                }
+                break;
+
+            case Block.DIR4.LEFT:
+                if (block.i_pos.x > 0)//그리드 내
+                {
+                    next_block = this.blocks[block.i_pos.x-1, block.i_pos.y];
+                }
+                break;
+
+             case Block.DIR4.UP:
+                if (block.i_pos.y < Block.BLOCK_NUM_Y - 1)//그리드 내
+                {
+                    next_block = this.blocks[block.i_pos.x, block.i_pos.y+1];
+                }
+                break;
+
+            case Block.DIR4.DOWN:
+                if (block.i_pos.y > 0)//그리드 내
+                {
+                    next_block = this.blocks[block.i_pos.x, block.i_pos.y - 1];
+                }
+                break;
+        }
+        return (next_block);
+
+    }
+
+    public static Vector3 getDirVector(Block.DIR4 dir)//인수 dir로 받은 방향으로 블록 하나만큼 이동할 경우의 이동량을 벡터3형으로 반환.(인수 방향이 RIGHT이면 현재 블록의 오른쪽 좌표로 이동하는 양을 반환.)
+    {
+        Vector3 v = Vector3.zero;
+
+        switch (dir)
+        {
+            case Block.DIR4.RIGHT: v = Vector3.right;break;//오른쪽으로 1단위 이동
+            case Block.DIR4.LEFT: v = Vector3.left; break;//왼쪽으로 1단위 이동
+            case Block.DIR4.UP: v = Vector3.up; break;//위로 1단위 이동
+            case Block.DIR4.DOWN: v = Vector3.down; break;//아래로 1단위 이동
+        }
+        v *= Block.COLLISION_SIZE;// 블록의 크기를 곱한다.
+        return (v);
+    }
+
+    public static Block.DIR4 getOppositDir(Block.DIR4 dir)//인수 dir로 받은 방향의 역방향을 반환. 잡은 블록이 오른쪽으로 이동할 경우, 이동할 곳에 있는 블록은 반대인 왼쪽으로 이동하게끔.
+    {
+        Block.DIR4 opposit = dir;
+        switch (dir)
+        {
+            case Block.DIR4.RIGHT: opposit = Block.DIR4.LEFT;break;
+            case Block.DIR4.LEFT: opposit = Block.DIR4.RIGHT; break;
+            case Block.DIR4.UP: opposit = Block.DIR4.DOWN; break;
+            case Block.DIR4.DOWN: opposit = Block.DIR4.UP; break;
+        }
+        return (opposit);
+    }
+
+    public void swapBlock(BlockControl block0, Block.DIR4 dir, BlockControl block1)//블록 교체 작업 수행. block0 = 잡고있는 블록/ dir = 이동 방향 / block1 = 이동할 곳의 블록
+    {
+        //각각의 블록 색 
+        Block.COLOR color0 = block0.color;
+        Block.COLOR color1 = block1.color;
+
+        //각각의 블록의 확대율
+        Vector3 scale0 = block0.transform.localScale;
+        Vector3 scale1 = block1.transform.localScale;
+
+        //각각의 블록의 사라지는 시간
+        float vanish_timer0 = block0.vanish_timer;
+        float vanish_timer1 = block1.vanish_timer;
+
+        //각각의 블록의 이동할 곳을 구한다.
+        Vector3 offset0 = BlockRoot.getDirVector(dir); 
+        Vector3 offset1 = BlockRoot.getDirVector(BlockRoot.getOppositDir(dir));
+
+        //색 교체
+        block0.setColor(color1);
+        block1.setColor(color0);
+
+        //확대율 교체
+        block0.transform.localScale = scale1;
+        block1.transform.localScale = scale0;
+
+        //사라지는 시간 교체
+        block0.vanish_timer = vanish_timer1;
+        block1.vanish_timer = vanish_timer0;
+
+        block0.beginSlide(offset0);//원래 블록 이동 시작
+        block1.beginSlide(offset1);//이동할 위치의 블록 이동 시작
+    }
+
 }
