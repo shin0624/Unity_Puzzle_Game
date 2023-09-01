@@ -2,7 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class BlockRoot : MonoBehaviour
+public class BlockRoot : MonoBehaviour//각 블록에 준비된 기능을 사용하여 브블록 전체의 움직임 제어. 
 {
     public GameObject BlockPrefab = null;//만들어낼 블록의 프리팹
     public BlockControl[,] blocks;//그리드

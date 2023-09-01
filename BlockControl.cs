@@ -8,7 +8,7 @@ public class Block
     public static float COLLISION_SIZE = 1.0f;//블록의 충돌 크기
     public static float VANISH_TIME = 3.0f;//불이 붙고 사라질 때까지의 시간
 
-   
+    
 
     public struct iPosition 
     {//그리드에서의 좌표를 나타내는 구조체
@@ -75,6 +75,9 @@ public class BlockControl : MonoBehaviour
     public float vanish_timer = -1.0f;//블록이 사라질 때 까지의 시간
     public Block.DIR4 slide_dir = Block.DIR4.NONE;//슬라이드 된 방향.
     public float step_timer = 0.0f;//블록이 교체된 때의 이동시간 
+
+    public Material opague_material;//불투명 마테리얼
+    public Material transparent_material;//반투명 마테리얼
 
     public Block.DIR4 calcSlideDir(Vector2 mouse_position)//인수 마우스 위치를 바탕으로 어느쪽으로 슬라이드되었는지 판단 후 Block.DIR4형 값으로 반환-->블록 교체 여부를 판단.
     {
@@ -147,6 +150,26 @@ public class BlockControl : MonoBehaviour
         //획득한 마우스 위치를 x와 y만으로 한다.
         Vector2 mouse_position_xy = new Vector2(mouse_position.x, mouse_position.y);
 
+        //블록 중복 시 발화 및 소멸 이벤트 발생 단계 추가
+        if (this.vanish_timer >= 0.0f)//타이머가 0 이상이면
+        {
+            this.vanish_timer -=Time.deltaTime;//타이머 값 감소
+            if(this.vanish_timer <0.0f)//타이머가 0 미만이면
+            {
+                if(this.step != Block.STEP.SLIDE)//슬라이드 중이 아닐 때
+                {
+                    this.vanish_timer = -1.0f;
+                    this.next_step = Block.STEP.VACANT;//상태를 소멸 중으로 변경
+                }
+                else
+                {
+                    this.vanish_timer = 0.0f;
+                }
+            }
+
+        }
+
+
         this.step_timer += Time.deltaTime;
         float slide_time = 0.2f;
 
@@ -192,6 +215,7 @@ public class BlockControl : MonoBehaviour
                     break;
                 case Block.STEP.VACANT://사라진 상태
                     this.position_offset= Vector3.zero;
+                    this.setVisible(false);//블록 발화 시 사라짐 상태 이행 처리 추가.-->현재 블록을 표시하지 않도록
                     break;
             }
             this.step_timer = 0.0f;
@@ -213,6 +237,25 @@ public class BlockControl : MonoBehaviour
 
         //실제 위치를 새로운 위치로 변경
         this.transform.position = position;
+
+        this.setColor(this.color);//블록의 색을 서서히 바꾸는 처리 추가
+
+        if (this.vanish_timer >= 0.0f)
+        {
+            Color color0 = Color.Lerp(this.GetComponent<Renderer>().material.color, Color.white, 0.5f);//현재 색과 흰색의 중간 색
+            Color color1 = Color.Lerp(this.GetComponent<Renderer>().material.color, Color.black, 0.5f);//현재 색과 검은색의 중간 색
+
+            //발화 연출 시간이 절반을 지났다면
+            if(this.vanish_timer < Block.VANISH_TIME / 2.0f)
+            {
+                color0.a = this.vanish_timer / (Block.VANISH_TIME / 2.0f);//투명도(a) 설정
+                color1.a = color0.a;
+                this.GetComponent<Renderer>().material = this.transparent_material;//반투명 마테리얼 적용
+            }
+            float rate = 1.0f - this.vanish_timer / Block.VANISH_TIME;//vanish_timer가 줄어들수록 1에 가까워진다.
+            this.GetComponent<Renderer>().material.color = Color.Lerp(color0, color1, rate);//서서히 색을 바꿀 수 있도록.
+            //Lerp(색A, 색B, 비율)로 사용-->color0에서 color1로 변화되는 과정을 rate% 진행한 만큼의 색을 반환. 즉 color1과 color2의 중간 색을 구해서 현재 블록의 마테리얼 색상으로 설정
+        }
 
     }
     public void beginGrab()
@@ -295,5 +338,42 @@ public class BlockControl : MonoBehaviour
         }
         //이 게임 오브젝트의 마테리얼 색상 변경
         this.GetComponent<Renderer>().material.color = color_value;
+    }
+
+    public void toVanishing()//블록을 지우기 시작할 때
+    {
+        this.vanish_timer = Block.VANISH_TIME;//소멸 때 까지 걸리는 시간을 규정값으로 리셋
+    }
+
+    public bool isVanshing()//블록이 지워지는 중이면 true. 즉 vanish_timer가 0 이상이면 true
+    {
+        bool is_vanishing = (this.vanish_timer > 0.0f);
+        return (is_vanishing);
+    }
+
+    public void rewindVanishTimer()//사라질 때까지 걸리는 시간을 리셋
+    {
+        this.vanish_timer = Block.VANISH_TIME;//소멸 때 까지 걸리는 시간을 규정값으로 리셋
+    }
+
+    public bool isVisible()
+    {
+        bool is_visible = this.GetComponent<Renderer>().enabled;
+        return (is_visible);//그리기 가능 상태일 때. 즉 블록이 표시되고 있을 때 true반환
+    }
+
+    public void setVisible(bool is_visible)                                           
+    {
+        this.GetComponent<Renderer>().enabled = is_visible;//그리기 가능 설정에 bool값을 대입. 인수에 true를 지정하면 블록이 표시되고, false를 지정하면 블록이 표시되지 않는다.
+    }
+
+    public bool isIdle()
+    {
+        bool is_idle = false;
+        if(this.step==Block.STEP.IDLE && this.next_step == Block.STEP.NONE)//현재 블록 상태가 대기중, 다음 블록 상태가 없음 일 경우 true 반환
+        {
+            is_idle = true;
+        }
+        return(is_idle);
     }
 }
