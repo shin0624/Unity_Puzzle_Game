@@ -2,7 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class BlockRoot : MonoBehaviour//각 블록에 준비된 기능을 사용하여 브블록 전체의 움직임 제어. 
+public class BlockRoot : MonoBehaviour//각 블록에 준비된 기능을 사용하여 블록 전체의 움직임 제어. 
 {
     public GameObject BlockPrefab = null;//만들어낼 블록의 프리팹
     public BlockControl[,] blocks;//그리드
@@ -81,7 +81,186 @@ public class BlockRoot : MonoBehaviour//각 블록에 준비된 기능을 사용하여 브블록 
                 this.grabbed_block = null;
             }
         }
+
+        //낙하 중 또는 슬라이드 중이면
+        if (this.is_has_falling_block() || this.is_has_sliding_block())
+        {
+            //아무것도 하지 않는다.
+        }
+        else//낙하 중이 아니고 슬라이드 중도 아닐 경우
+        {
+            int ignite_count = 0;//불 붙은 개수
+
+            foreach (BlockControl block in this.blocks)//그리드 내 모든 블록에 대해서 처리
+            {
+                if (!block.isIdle())
+                {
+                    continue;//대기중일 경우 루프의 처음으로 점프 후 다음 블록 처리
+                }
+                if (this.checkConnection(block))//가로 혹은 세로에 같은 색 블록이 세 개 이상 나열된 경우
+                {
+                    ignite_count++;//불 붙은 개수 증가
+                }
+            }
+            if (ignite_count > 0)//불이 붙은 개수가 0 이상일 때
+            {
+                int block_count = 0;
+                foreach (BlockControl block in this.blocks)//그리드 내 모든 블록에 대해서 처리
+                {
+                    if (block.isVanishing())
+                    {
+                        block.rewindVanishTimer();//불타는 중이면 다시 점화
+                    }
+                }
+            }
+
+        }
+       
     }
+
+    public bool checkConnection(BlockControl start)//블록이 세 개 이상 나열된 블록 무리에 포함되는지 가로세로 모두 검사
+    {
+        //(가로 검사)
+        bool ret = false;
+        int normal_block_num = 0;
+        if (!start.isVanishing())
+        {
+            normal_block_num = 1;
+        }
+        int rx = start.i_pos.x;//그리드 좌표 기억
+        int lx = start.i_pos.x;
+
+        for(int x = lx - 1; x > 0; x--)//블록 왼쪽 검사
+        {
+            BlockControl next_block = this.blocks[x, start.i_pos.y];
+            if (next_block.color != start.color)
+            {
+                break;//색이 다른 경우 루프 통과
+            }
+            if(next_block.step == Block.STEP.FALL || next_block.next_step == Block.STEP.FALL)
+            {
+                break;//낙하중일 경우 루프 통과
+            }
+            if(next_block.step == Block.STEP.SLIDE || next_block.next_step == Block.STEP.SLIDE)
+            {
+                break;//슬라이드 중일 경우 루프 통과
+            }
+            if (!next_block.isVanishing())
+            {
+                normal_block_num++;//불이 붙은 상태가 아닐 경우 카운터 증가
+            }
+            lx = x;
+        }
+        for(int x = rx + 1; x < Block.BLOCK_NUM_X; x++)//블록 오른쪽 검사
+        {
+            BlockControl next_block = this.blocks[x, start.i_pos.y];
+            if (next_block.color != start.color)
+            {
+                break;
+            }
+            if (next_block.step == Block.STEP.FALL || next_block.next_step == Block.STEP.FALL)        
+            {
+                break;
+            }
+            if (next_block.step == Block.STEP.SLIDE || next_block.next_step == Block.STEP.SLIDE)
+            {
+                break;
+            }
+            if (!next_block.isVanishing())
+            {
+                normal_block_num++;
+            }
+            rx = x;
+        }
+        do
+        {
+            if (rx - lx + 1 < 3)//오른쪽 블록 그리드번호 - 왼쪽 블록 그리드 번호 + 중앙 블록(1) 이 3 미만일 때
+            {
+                break;
+            }
+            if (normal_block_num == 0)
+            {
+                break;
+            }
+            for (int x = lx; x < rx + 1; x++)//나열된 같은 색 블록을 모두 ignite상태로.
+            {
+                this.blocks[x, start.i_pos.y].toVanishing();
+                ret = true;
+            }
+        } while (false);
+
+        //(세로 검사)
+        normal_block_num = 0;
+        if (!start.isVanishing())
+        {
+            normal_block_num = 1;
+        }
+        int uy = start.i_pos.y;
+        int dy = start.i_pos.y;
+
+        for(int y = dy-1; y > 0; y--)//블록 위쪽 검사
+        {
+            BlockControl next_block = this.blocks[start.i_pos.x, y];
+            if (next_block.color != start.color)
+            {
+                break;
+            }
+            if (next_block.step == Block.STEP.FALL || next_block.next_step == Block.STEP.FALL)
+            {
+                break;
+            }
+            if (next_block.step == Block.STEP.SLIDE || next_block.next_step == Block.STEP.SLIDE)
+            {
+                break;
+            }
+            if (!next_block.isVanishing())
+            {
+                normal_block_num++;
+            }
+            dy = y;
+        }
+
+        for(int y = uy+1; y<Block.BLOCK_NUM_Y; y++)//블록 아래쪽 검사
+        {
+            BlockControl next_block = this.blocks[start.i_pos.x, y];
+            if (next_block.color != start.color)
+            {
+                break;
+            }
+            if (next_block.step == Block.STEP.FALL || next_block.next_step == Block.STEP.FALL)
+            {
+                break;
+            }
+            if (next_block.step == Block.STEP.SLIDE || next_block.next_step == Block.STEP.SLIDE)
+            {
+                break;
+            }
+            if (!next_block.isVanishing())
+            {
+                normal_block_num++;
+            }
+            uy = y;
+        }
+
+        do
+        {
+            if (uy - dy + 1 < 3)
+            {
+                break;
+            }
+            if (normal_block_num == 0)
+            {
+                break;
+            }
+            for (int y = dy; y < uy + 1; y++)
+            {
+                this.blocks[start.i_pos.x, y].toVanishing();
+                ret = true;
+            }
+        } while (false);
+        return (ret);
+    }
+
 
     public bool unprojectMousePosition(out Vector3 world_position, Vector3 mouse_position)//마우스가 지금 어느 블록 표면을 가리키는 지 계산.
      //9x9 블록 표면에 가상의 판을 두고, 카메라에서 마우스 좌표를 향해 빛을 통과시켜 빛의 도달 여부에 따라 마우스가 가리키는 현재 3차원 공간의 위치를 알 수 있다.
@@ -256,4 +435,46 @@ public class BlockRoot : MonoBehaviour//각 블록에 준비된 기능을 사용하여 브블록 
         block1.beginSlide(offset1);//이동할 위치의 블록 이동 시작
     }
 
+    //그리드 내 블록 상태 조사 메서드 추가
+    private bool is_has_vanishing_block()//불붙는 중인 블록이 하나라도 있으면 참
+    {
+        bool ret = false;
+        foreach(BlockControl block in this.blocks)
+        {
+            if(block.vanish_timer > 0.0f)
+            {
+                ret = true;
+                break;
+            }
+        }
+        return (ret);
+    }
+
+    private bool is_has_sliding_block()//슬라이드 중인 블록이 하나라도 있으면 참
+    {
+        bool ret = false;
+        foreach(BlockControl block in this.blocks)
+        {
+            if(block.step == Block.STEP.SLIDE)
+            {
+                ret = true;
+                break;
+            }
+        }
+        return (ret);
+    }
+
+    private bool is_has_falling_block()//낙하 중인 블록이 하나라도 있으면 참
+    {
+        bool ret = false;
+        foreach(BlockControl block in this.blocks)
+        {
+            if (block.step == Block.STEP.FALL)
+            {
+                ret = true;
+                break;
+            }
+        }
+        return (ret);
+    }
 }

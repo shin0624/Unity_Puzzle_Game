@@ -345,7 +345,7 @@ public class BlockControl : MonoBehaviour
         this.vanish_timer = Block.VANISH_TIME;//소멸 때 까지 걸리는 시간을 규정값으로 리셋
     }
 
-    public bool isVanshing()//블록이 지워지는 중이면 true. 즉 vanish_timer가 0 이상이면 true
+    public bool isVanishing()//블록이 지워지는 중이면 true. 즉 vanish_timer가 0 이상이면 true
     {
         bool is_vanishing = (this.vanish_timer > 0.0f);
         return (is_vanishing);
