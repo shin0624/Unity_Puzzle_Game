@@ -79,6 +79,12 @@ public class BlockControl : MonoBehaviour
     public Material opague_material;//불투명 마테리얼
     public Material transparent_material;//반투명 마테리얼
 
+    private struct StepFall//블록 낙하 제어 구조체 추가-->낙하를 더 복잡한 방법으로 제어하고자 할 때 구조체 멤버를 늘려 대응할 수 있음
+    {
+        public float velocity;//낙하 속도
+    }
+    private StepFall fall;
+
     public Block.DIR4 calcSlideDir(Vector2 mouse_position)//인수 마우스 위치를 바탕으로 어느쪽으로 슬라이드되었는지 판단 후 Block.DIR4형 값으로 반환-->블록 교체 여부를 판단.
     {
         Block.DIR4 dir = Block.DIR4.NONE;
@@ -189,6 +195,17 @@ public class BlockControl : MonoBehaviour
                         }
                     }
                     break;
+                    //블록 상태 대기중(IDLE), 낙하중(FALL)인 경우 추가
+                case Block.STEP.IDLE:
+                    this.GetComponent<Renderer>().enabled = true;
+                    break;
+                case Block.STEP.FALL:
+                    if(this.position_offset.y <= 0.0f)
+                    {
+                        this.next_step = Block.STEP.IDLE;
+                        this.position_offset.y = 0.0f;
+                    }
+                    break;
             }
 
         }
@@ -217,10 +234,20 @@ public class BlockControl : MonoBehaviour
                     this.position_offset= Vector3.zero;
                     this.setVisible(false);//블록 발화 시 사라짐 상태 이행 처리 추가.-->현재 블록을 표시하지 않도록
                     break;
+                    //next_step의 상태가 재생성(RESPAWN), 낙하(FALL)중인 경우 처리 추가-->재생성된 순간 랜덤하게 색을 칠하고 IDLE상태로 변경 / 낙하중인 순간 블록을 표시하고 낙하 속도를 리셋
+                case Block.STEP.RESPAWN:
+                    int color_index = Random.Range(0, (int)Block.COLOR.NORMAL_COLOR_NUM);
+                    this.setColor((Block.COLOR)color_index);
+                    this.next_step = Block.STEP.IDLE;
+                    break;
+                case Block.STEP.FALL:
+                    this.setVisible(true);//블록을 표시
+                    this.fall.velocity = 0.0f;//낙하 속도 리셋
+                    break;
             }
             this.step_timer = 0.0f;
         }
-        switch (this.step)
+        switch (this.step)//블록 상태에 관계없이 항상 실행됨
         {
             case Block.STEP.GRABBED://잡힌 상태일 때. 항상 슬라이드 방향을 체크하도록
                 this.slide_dir = this.calcSlideDir(mouse_position_xy); break;
@@ -229,7 +256,17 @@ public class BlockControl : MonoBehaviour
                 rate = Mathf.Min(rate, 1.0f);
                 rate = Mathf.Sin(rate * Mathf.PI / 2.0f);
                 this.position_offset = Vector3.Lerp(this.position_offset_initial, Vector3.zero, rate);break;
-                //Vector3.Lerp = 시작벡터 ~ 목표벡터 사이의 시간에 따른 위치를 구할 때 사용.Lerp(start, finish, 0.0~1.0값)
+            //Vector3.Lerp = 시작벡터 ~ 목표벡터 사이의 시간에 따른 위치를 구할 때 사용.Lerp(start, finish, 0.0~1.0값)
+
+                //낙하중일 때 블록에 중력이 걸리도록 하여, 블록이 낙하하고 들어가야 할 장소(position_offset)까지 움직이면 그 자리에 머물도록
+            case Block.STEP.FALL:
+                this.fall.velocity += Physics.gravity.y * Time.deltaTime * 0.3f;//속도에 중력의 영향 부여
+                this.position_offset.y += this.fall.velocity * Time.deltaTime;//세로 방향 위치를 계산
+                if(this.position_offset.y < 0.0f)
+                {
+                    this.position_offset.y = 0.0f;//다 내려왔다면 그자리에 머물도록
+                }
+                break;
         }
 
         //그리드 좌표를 실제 좌표(씬의 좌표)로 변환하고 position_offset 추가
@@ -375,5 +412,31 @@ public class BlockControl : MonoBehaviour
             is_idle = true;
         }
         return(is_idle);
+    }
+
+    public void beginFall(BlockControl start)//낙하 시작 처리
+    {
+        this.next_step = Block.STEP.FALL;
+        this.position_offset.y = (float)(start.i_pos.y - this.i_pos.y) * Block.COLLISION_SIZE;//지정된 블록에서 좌표를 계산해낸다.
+    }
+    public void beginRespawn(int start_ipos_y)//색을 바꿔 낙하 상태로 하고, 지정 위치에 재배치
+    {
+        this.position_offset.y = (float)(start_ipos_y - this.i_pos.y) * Block.COLLISION_SIZE;//지정 위치까지 y좌표 이동
+        this.next_step = Block.STEP.FALL;
+        int color_index = Random.Range((int)Block.COLOR.FIRST, (int)Block.COLOR.LAST + 1);
+        this.setColor((Block.COLOR)color_index);
+    }
+    public bool isVacant()//블록 그리드 상 위치가 VACANT일 때 true반환
+    {
+        bool is_vacant = false;
+        if(this.step == Block.STEP.VACANT && this.next_step == Block.STEP.NONE)
+        {
+            is_vacant = true;
+        }return (is_vacant);
+    }
+    public bool isSliding()//슬라이드 중일 때 true반환
+    {
+        bool is_sliding = (this.position_offset.x != 0.0f);
+        return(is_sliding);
     }
 }
