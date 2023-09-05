@@ -10,6 +10,47 @@ public class BlockRoot : MonoBehaviour//각 블록에 준비된 기능을 사용하여 블록 전
     private GameObject main_camera = null;//메인 카메라
     private BlockControl grabbed_block = null;//잡은 블록
 
+    public void fallBlock(BlockControl block0, Block.DIR4 dir, BlockControl block1)//낙하 시 위아래 블록 교체
+    {
+        //block0과 block1의 색, 크기, vanish_timer, 표시, 비표시, 상태 기록
+        Block.COLOR color0 = block0.color;
+        Block.COLOR color1 = block1.color;
+        Vector3 scale0 = block0.transform.localScale;
+        Vector3 scale1 = block1.transform.localScale;
+        float vanish_timer0 = block0.vanish_timer;
+        float vanish_timer1 = block1.vanish_timer;
+        bool visible0 = block0.isVisible();
+        bool visible1 = block1.isVisible();
+        Block.STEP step0 = block0.step;
+        Block.STEP step1 = block1.step;
+
+        //block0과 block1의 각종 속성을 교체
+        block0.setColor(color1);
+        block1.setColor(color0);
+        block0.transform.localScale = scale1;
+        block1.transform.localScale = scale0;
+        block0.vanish_timer = vanish_timer1;
+        block1.vanish_timer = vanish_timer0;
+        block0.setVisible(visible1);
+        block1.setVisible(visible0);
+        block0.step = step1;
+        block1.step = step0;
+        block0.beginFall(block1);
+    }
+
+    private bool is_has_sliding_block_in_column(int x)//지정된 그리드 좌표의 세로 줄에 슬라이드 중인 블록이 하나라도 있으면 참
+    {
+        bool ret = false;
+        for(int y = 0; y < Block.BLOCK_NUM_Y; y++)
+        {
+            if (this.blocks[x, y].isSliding())
+            {
+                ret = true;//슬라이드 중인 블록이 있으면 참 반환
+                break;
+            }
+        }return (ret);
+    }
+
     void Start()
     {
         //카메라로부터 마우스 커서를 통과하는 광선을 쏘기 위해 메인 카메라 확보-->나열된 블록 표면에 빛을 쏘아 어디를 가리키는지 계산하기 위해 카메라 오브젝트를 가져온다
@@ -26,9 +67,10 @@ public class BlockRoot : MonoBehaviour//각 블록에 준비된 기능을 사용하여 블록 전
         Vector2 mouse_position_xy = new Vector2(mouse_position.x, mouse_position.y);
         if(this.grabbed_block == null)//잡은 블록이 비었으면
         {
-            //if(!this.is_has_falling_block()){
-            if (Input.GetMouseButtonDown(0))
+            if(!this.is_has_falling_block())//낙하중인 블록이 하나라도 있을 경우 잡는 처리
             {
+             if (Input.GetMouseButtonDown(0))
+              {
                 foreach(BlockControl block in this.blocks)//마우스 버튼이 눌렸다면 blocks 배열의 모든 요소를 차례로 처리
                 {
                     if(!block.isGrabbable())
@@ -43,8 +85,8 @@ public class BlockRoot : MonoBehaviour//각 블록에 준비된 기능을 사용하여 블록 전
                     this.grabbed_block.beginGrab();//잡았을 때의 처리 실행
                     break;
                 }
+              }
             }
-            //}
         }
         else
         {
@@ -115,6 +157,60 @@ public class BlockRoot : MonoBehaviour//각 블록에 준비된 기능을 사용하여 블록 전
             }
 
         }
+
+        //하나라도 연소 중인 블록이 있는가?
+        bool is_vanishing = this.is_has_vanishing_block();
+        //조건이 만족되면 블록을 떨어뜨리고, 부족해진 만큼 위에서 보충되도록
+        do
+        {
+            if (is_vanishing)
+            {
+                break;//연소 중인 블록이 있을 경우 낙하처리 x 
+            }
+            if (this.is_has_sliding_block())
+            {
+                break;//교체 중인 블록이 있다면 낙하처리 x
+            }
+            for (int x = 0; x < Block.BLOCK_NUM_X; x++)
+            {
+                //열에 교체중인 블록이 있다면 그 열은 처리하지 않고 다음 열로 진행하도록
+                if (this.is_has_sliding_block_in_column(x))
+                {
+                    continue;
+                }
+                //그 열에 있는 블록을 위에서부터 검사
+                for (int y = 0; y < Block.BLOCK_NUM_Y - 1; y++)
+                {
+                    if (!this.blocks[x, y].isVacant())
+                    {
+                        continue;//지정 블록이 비표시일 경우 다음 블록으로
+                    }
+                    for (int y1 = y + 1; y1 < Block.BLOCK_NUM_Y; y++)//지정 블록 아래에 있는 블록을 검사
+                    {
+                        if (this.blocks[x, y1].isVacant())
+                        {
+                            continue;//아래에 있는 블록이 비표시라면 다음 블록으로
+                        }
+                        this.fallBlock(this.blocks[x, y], Block.DIR4.UP, this.blocks[x, y1]);//블록 교체
+                        break;
+                    }
+                }
+            }
+            //블록 보충 처리
+            for (int x = 0; x < Block.BLOCK_NUM_X; x++)
+            {
+                int fall_start_y = Block.BLOCK_NUM_Y;
+                for (int y = 0; y < Block.BLOCK_NUM_Y; y++)
+                {
+                    if (!this.blocks[x, y].isVacant())//비표시 블록이 아니라면 다음 블록으로
+                    {
+                        continue;
+                    }
+                    this.blocks[x, y].beginRespawn(fall_start_y);//블록 부활
+                    fall_start_y++;
+                }
+            }
+        } while (false);
        
     }
 
